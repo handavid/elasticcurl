@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
-import sys
 import argparse
-import re
+import json
 import os
+import re
+import subprocess
+import sys
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--input',  required=True)
@@ -14,7 +16,6 @@ args = parser.parse_args()
 inurl  = args.input.find(":")
 outurl = args.output.find(":")
 
-totalLines = 0
 infile  = None if  inurl != -1 else open(args.input)
 outfile = None if outurl != -1 else open(args.output,'w')
 tmpfile = None
@@ -25,50 +26,63 @@ def put_line(line):
   global tmpfile
   if outurl == -1: outfile.write(line)
   else:
-    match = re.search(r'"_index":"([^"]*)","_type":"([^"]*)","_id":"([^"]*)"', line);
-    if match == None: return
-    _index = match.group(1)
-    _type  = match.group(2)
-    _id    = match.group(3)
-    tmpfile.write("{ \"index\" : { \"_index\" : \"" + _index + "\", \"_type\" : \"" + _type + "\", \"_id\" : \"" + _id + "\" } }\n")
+    match = re.search(r'"_index":"([^"]*)"', line); _index = match.group(1)
+    match = re.search(r'"_type":"([^"]*)"', line);  _type  = match.group(1)
+    match = re.search(r'"_id":"([^"]*)"', line);    _id    = match.group(1)
+    tmpfile.write("{\"index\":{\"_index\":\"" + _index + "\",\"_type\":\"" + _type + "\",\"_id\":\"" + _id + "\"}}\n")
     tmpfile.write(line)
 
 def get_lines_from_file(limit, offset):
   global infile
   global tmpfile
   linesread = 0
-  if outurl != -1: tmpfile = open("/tmp/elasticcurl.json",'w')
+  if outurl != -1: tmpfile = open("/tmp/elasticcurl.put.json",'w')
   for num in range(0, limit):
     line = infile.readline()
-    if line == "": return linesread
-    if line.startswith(","): line = line[1:]
-    linesread += 1
+    if line == "": break
     put_line(line)
+    linesread += 1
   if outurl != -1: tmpfile.close()
   return linesread
 
-def get_lines_from_es(limit):
-  return
+def get_lines_from_es(limit, offset):
+  cmd = "curl -s \"" + args.input + "/_search?size=" + str(limit) + "&from=" + str(offset) + "\""
+  result = json.loads(subprocess.check_output(cmd, shell=True))
+  linesread = 0
+  if outurl != -1: tmpfile = open("/tmp/elasticcurl.put.json",'w')
+  for line in result['hits']['hits']:
+    put_line(json.dumps(line, sort_keys=True, separators=(',', ':')) + "\n")
+    linesread += 1
+  if outurl != -1: tmpfile.close()
+  return linesread
 
-def put_lines_to_file():
-  return  # the lines have already been written through put_line()
+def put_lines_to_file(linesread):
+  return linesread # the lines have already been written through put_line()
 
-def put_lines_to_es():
-  os.system("curl -s -XPOST " + args.output + "/_bulk --data-binary @/tmp/elasticcurl.json > /dev/null")
+def put_lines_to_es(linesread):
+  cmd = "curl -s -XPOST " + args.output + "/_bulk --data-binary @/tmp/elasticcurl.put.json"
+  result = json.loads(subprocess.check_output(cmd, shell=True))
+  lineswrote = 0
+  for line in result['items']:
+    lineswrote += 1 # should probably check if result was 'ok'
+  return lineswrote
 
 def get_lines(limit, offset):
   return get_lines_from_file(limit, offset) if inurl == -1 else get_lines_from_es(limit, offset)
 
-def put_lines():
-  put_lines_to_file() if outurl == -1 else put_lines_to_es()
+def put_lines(linesread):
+  return put_lines_to_file(linesread) if outurl == -1 else put_lines_to_es(linesread)
 
-offset = 0
+linesin  = 0
+linesout = 0
 while True:
-  newlines = get_lines(args.limit, offset)
-  if newlines == 0: break
-  put_lines()
-  offset += newlines
-  print "Read " + str(offset) + " lines"
+  linesread = get_lines(args.limit, linesin)
+  if linesread == 0: break
+  linesin += linesread
+  print "Read " + str(linesin) + " lines"
+  lineswrote = put_lines(linesread)
+  linesout += lineswrote
+  print "Wrote " + str(linesout) + " lines"
 
 if  inurl == -1:  infile.close()
 if outurl == -1: outfile.close()
