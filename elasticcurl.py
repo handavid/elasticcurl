@@ -20,6 +20,7 @@ outurl = args.output.find(":")
 infile  = None if  inurl != -1 else open(args.input)
 outfile = None if outurl != -1 else open(args.output,'w')
 tmpfile = None
+tmpname = "/tmp/elasticcurl.json"
 
 def emit(line):
   print time.asctime(time.localtime(time.time())) + " | " + line
@@ -40,7 +41,7 @@ def get_lines_from_file(limit, offset):
   global infile
   global tmpfile
   linesread = 0
-  if outurl != -1: tmpfile = open("/tmp/elasticcurl.put.json",'w')
+  if outurl != -1: tmpfile = open(tmpname,'w')
   for num in range(0, limit):
     line = infile.readline()
     if line == "": break
@@ -53,7 +54,7 @@ def get_lines_from_es(limit, offset):
   cmd = "curl -s \"" + args.input + "/_search?size=" + str(limit) + "&from=" + str(offset) + "\""
   result = json.loads(subprocess.check_output(cmd, shell=True))
   linesread = 0
-  if outurl != -1: tmpfile = open("/tmp/elasticcurl.put.json",'w')
+  if outurl != -1: tmpfile = open(tmpname,'w')
   for line in result['hits']['hits']:
     put_line(json.dumps(line, sort_keys=True, separators=(',', ':')) + "\n")
     linesread += 1
@@ -64,7 +65,7 @@ def put_lines_to_file(linesread):
   return linesread # the lines have already been written through put_line()
 
 def put_lines_to_es(linesread):
-  cmd = "curl -s -XPOST " + args.output + "/_bulk --data-binary @/tmp/elasticcurl.put.json"
+  cmd = "curl -s -XPOST " + args.output + "/_bulk --data-binary @" + tmpname
   result = json.loads(subprocess.check_output(cmd, shell=True))
   lineswrote = 0
   for line in result['items']:
