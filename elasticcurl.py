@@ -12,10 +12,9 @@ class ElasticCurl:
 
   def __init__(self, args):
     self.args    = args
-    self.inurl   = args.input.find(":")
-    self.outurl  = args.output.find(":")
+    self.inurl   = args.input.find(":")  # if this is -1, it's not a URL (and therefore a file)
+    self.outurl  = args.output.find(":") # if this is -1, it's not a URL (and therefore a file)
     self.tmpfile = None
-    self.tmpname = "/tmp/elasticcurl.json"
 
   def emit(self, line):
     print time.asctime(time.localtime(time.time())) + " | " + line
@@ -31,7 +30,7 @@ class ElasticCurl:
 
   def get_lines_from_file(self, limit, offset):
     linesread = 0
-    if self.outurl != -1: self.tmpfile = open(self.tmpname,'w')
+    if self.outurl != -1: self.tmpfile = open(self.args.tmp,'w')
     for num in range(0, limit):
       line = self.infile.readline()
       if line == "": break
@@ -44,7 +43,7 @@ class ElasticCurl:
     cmd = "curl -s \"" + args.input + "/_search?size=" + str(limit) + "&from=" + str(offset) + "\""
     result = json.loads(subprocess.check_output(cmd, shell=True))
     linesread = 0
-    if self.outurl != -1: self.tmpfile = open(self.tmpname,'w')
+    if self.outurl != -1: self.tmpfile = open(self.args.tmp,'w')
     for line in result['hits']['hits']:
       self.put_line(json.dumps(line, sort_keys=True, separators=(',', ':')) + "\n")
       linesread += 1
@@ -55,7 +54,7 @@ class ElasticCurl:
     return linesread # the lines have already been written through put_line()
 
   def put_lines_to_es(self, linesread):
-    cmd = "curl -s -XPOST " + self.args.output + "/_bulk --data-binary @" + self.tmpname
+    cmd = "curl -s -XPOST " + self.args.output + "/_bulk --data-binary @" + self.args.tmp
     result = json.loads(subprocess.check_output(cmd, shell=True))
     lineswrote = 0
     for line in result['items']:
@@ -94,6 +93,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--input',  required=True)
 parser.add_argument('--output', required=True)
 parser.add_argument('--limit',  type=int,  default=10000)
+parser.add_argument('--tmp',    default="/tmp/elasticcurl.json")
 args = parser.parse_args()
 
 curler = ElasticCurl(args)
