@@ -21,51 +21,49 @@ class ElasticCurl:
 
   def put_line(self, line):
     if self.outurl == -1: self.outfile.write(line)
-    else:
-      match = re.search(r'"_index":"([^"]*)"', line); _index = match.group(1)
-      match = re.search(r'"_type":"([^"]*)"', line);  _type  = match.group(1)
-      match = re.search(r'"_id":"([^"]*)"', line);    _id    = match.group(1)
-      self.tmpfile.write("{\"index\":{\"_index\":\"" + _index + "\",\"_type\":\"" + _type + "\",\"_id\":\"" + _id + "\"}}\n")
-      self.tmpfile.write(line)
+    else:                 self.tmpfile.write(line)
 
-  def get_lines_from_file(self, limit, offset):
-    linesread = 0
+  def get_items_from_file(self, limit, offset):
+    itemsread = 0
     if self.outurl != -1: self.tmpfile = open(self.args.tmp,'w')
     for num in range(0, limit):
-      line = self.infile.readline()
-      if line == "": break
-      self.put_line(line)
-      linesread += 1
+      coord = self.infile.readline()
+      item  = self.infile.readline()
+      if item == "": break
+      self.put_line(coord)
+      self.put_line(item)
+      itemsread += 1
     if self.outurl != -1: self.tmpfile.close()
-    return linesread
+    return itemsread
 
-  def get_lines_from_es(self, limit, offset):
+  def get_items_from_es(self, limit, offset):
     cmd = "curl -s \"" + args.input + "/_search?size=" + str(limit) + "&from=" + str(offset) + "\""
     result = json.loads(subprocess.check_output(cmd, shell=True))
-    linesread = 0
+    itemsread = 0
     if self.outurl != -1: self.tmpfile = open(self.args.tmp,'w')
-    for line in result['hits']['hits']:
-      self.put_line(json.dumps(line, sort_keys=True, separators=(',', ':')) + "\n")
-      linesread += 1
+    for hit in result['hits']['hits']:
+      self.put_line("{\"index\":{\"_index\":\"" + hit['_index'] + "\",\"_type\":\"" + hit['_type'] + "\",\"_id\":\"" + hit['_id'] + "\"}}\n")
+      self.put_line(json.dumps(hit['_source'], sort_keys=True, separators=(',', ':')) + "\n")
+      itemsread += 1
     if self.outurl != -1: self.tmpfile.close()
-    return linesread
+    return itemsread
 
-  def put_lines_to_file(self, linesread):
-    return linesread # the lines have already been written through put_line()
+  def put_items_to_file(self, itemsread):
+    return itemsread # the items have already been written through put_line()
 
-  def put_lines_to_es(self, linesread):
+  def put_items_to_es(self, itemsread):
     cmd = "curl -s -XPOST " + self.args.output + "/_bulk --data-binary @" + self.args.tmp
     result = json.loads(subprocess.check_output(cmd, shell=True))
-    lineswrote = 0
+    itemswrote = 0
     for line in result['items']:
-      lineswrote += 1 # should probably check if result was 'ok'
-    return lineswrote
+      itemswrote += 1 # should probably check if result was 'ok'
+    return itemswrote
 
-  def get_lines(self, limit, offset):
-    return self.get_lines_from_file(limit, offset) if self.inurl == -1 else self.get_lines_from_es(limit, offset)
+  def get_items(self, limit, offset):
+    return self.get_items_from_file(limit, offset) if self.inurl == -1 else self.get_items_from_es(limit, offset)
 
-  def put_lines(self, linesread):
-    return self.put_lines_to_file(linesread) if self.outurl == -1 else self.put_lines_to_es(linesread)
+  def put_items(self, itemsread):
+    return self.put_items_to_file(itemsread) if self.outurl == -1 else self.put_items_to_es(itemsread)
 
   def run(self):
     self.emit("elasticcurl begin")
@@ -73,16 +71,16 @@ class ElasticCurl:
     self.infile  = None if  self.inurl != -1 else open(self.args.input)
     self.outfile = None if self.outurl != -1 else open(self.args.output,'w')
 
-    linesin  = 0
-    linesout = 0
+    itemsin  = 0
+    itemsout = 0
     while True:
-      linesread = self.get_lines(self.args.limit, linesin)
-      if linesread == 0: break
-      linesin += linesread
-      self.emit("Read " + str(linesin) + " lines total")
-      lineswrote = self.put_lines(linesread)
-      linesout += lineswrote
-      self.emit("Wrote " + str(linesout) + " lines total")
+      itemsread = self.get_items(self.args.limit, itemsin)
+      if itemsread == 0: break
+      itemsin += itemsread
+      self.emit("Read " + str(itemsin) + " items total")
+      itemswrote = self.put_items(itemsread)
+      itemsout += itemswrote
+      self.emit("Wrote " + str(itemsout) + " items total")
 
     if  self.inurl == -1:  self.infile.close()
     if self.outurl == -1: self.outfile.close()
