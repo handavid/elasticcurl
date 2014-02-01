@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--input',  required=True)
@@ -19,6 +20,9 @@ outurl = args.output.find(":")
 infile  = None if  inurl != -1 else open(args.input)
 outfile = None if outurl != -1 else open(args.output,'w')
 tmpfile = None
+
+def emit(line):
+  print time.asctime(time.localtime(time.time())) + " | " + line
 
 def put_line(line):
   global outurl
@@ -73,17 +77,21 @@ def get_lines(limit, offset):
 def put_lines(linesread):
   return put_lines_to_file(linesread) if outurl == -1 else put_lines_to_es(linesread)
 
+emit("elasticcurl begin")
+
 linesin  = 0
 linesout = 0
 while True:
   linesread = get_lines(args.limit, linesin)
   if linesread == 0: break
   linesin += linesread
-  print "Read " + str(linesin) + " lines"
+  emit("Read " + str(linesin) + " lines total")
   lineswrote = put_lines(linesread)
   linesout += lineswrote
-  print "Wrote " + str(linesout) + " lines"
+  emit("Wrote " + str(linesout) + " lines total")
 
 if  inurl == -1:  infile.close()
 if outurl == -1: outfile.close()
+
+emit("elasticcurl end")
 
