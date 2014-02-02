@@ -18,6 +18,7 @@ class ElasticCurl:
 
   def emit(self, line):
     print time.asctime(time.localtime(time.time())) + " | " + line
+    sys.stdout.flush()
 
   def put_line(self, line):
     if self.outurl == -1: self.outfile.write(line)
