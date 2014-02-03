@@ -57,7 +57,7 @@ class ElasticCurl:
     try:
       result = json.loads(subprocess.check_output(cmd, shell=True))
     except subprocess.CalledProcessError as e:
-      emit("curl failed, error is " + str(e))
+      self.emit("curl failed, error is " + str(e))
       sys.exit(1)
     itemswrote = 0
     for line in result['items']:
