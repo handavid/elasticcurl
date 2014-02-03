@@ -54,7 +54,11 @@ class ElasticCurl:
 
   def put_items_to_es(self, itemsread):
     cmd = "curl -s -XPOST " + self.args.output + "/_bulk --data-binary @" + self.args.tmp
-    result = json.loads(subprocess.check_output(cmd, shell=True))
+    try:
+      result = json.loads(subprocess.check_output(cmd, shell=True))
+    except subprocess.CalledProcessError as e:
+      emit("curl failed, error is " + str(e))
+      sys.exit(1)
     itemswrote = 0
     for line in result['items']:
       itemswrote += 1 # should probably check if result was 'ok'
