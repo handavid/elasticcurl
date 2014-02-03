@@ -95,7 +95,7 @@ class ElasticCurl:
 parser = argparse.ArgumentParser()
 parser.add_argument('--input',  required=True)
 parser.add_argument('--output', required=True)
-parser.add_argument('--limit',  type=int,  default=10000)
+parser.add_argument('--limit',  type=int,  default=5000)
 parser.add_argument('--tmp',    default="/tmp/elasticcurl.json")
 args = parser.parse_args()
 
