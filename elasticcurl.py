@@ -12,29 +12,35 @@ class ElasticCurl:
 
   def __init__(self, args):
     self.args    = args
-    self.inurl   = args.input.find(":")  # if this is -1, it's not a URL (and therefore a file)
-    self.outurl  = args.output.find(":") # if this is -1, it's not a URL (and therefore a file)
-    self.tmpfile = None
+    self.inurl   = args.input.find(":")   # if this is -1, it's not a URL (and therefore a file)
+    self.outurl  = "".join(args.output).find(":")  # if this is -1, it's not a URL (and therefore a file)
+    self.tmpfile = []
 
   def emit(self, line):
     print time.asctime(time.localtime(time.time())) + " | " + line
     sys.stdout.flush()
 
-  def put_line(self, line):
+  def put_line(self, f, line):
     if self.outurl == -1: self.outfile.write(line)
-    else:                 self.tmpfile.write(line)
+    else:                 self.tmpfile[f].write(line)
 
   def get_items_from_file(self, limit, offset):
     itemsread = 0
-    if self.outurl != -1: self.tmpfile = open(self.args.tmp,'w')
-    for num in range(0, limit):
+    if self.outurl != -1:
+      self.tmpfile = []
+      for f in range(0, len(self.args.output)):
+        self.tmpfile.append(open(self.args.tmp + "." + str(f),'w'))
+    for num in range(0, limit * len(self.args.output)):
+      f = num % len(self.args.output)
       coord = self.infile.readline()
       item  = self.infile.readline()
       if item == "": break
-      self.put_line(coord)
-      self.put_line(item)
+      self.put_line(f, coord)
+      self.put_line(f, item)
       itemsread += 1
-    if self.outurl != -1: self.tmpfile.close()
+    if self.outurl != -1:
+      for f in range(0, len(self.args.output)):
+        self.tmpfile[f].close()
     return itemsread
 
   def get_items_from_es(self, limit, offset):
@@ -46,8 +52,8 @@ class ElasticCurl:
       _index = hit['_index'].replace("\"","\\\"")
       _type  = hit['_type'].replace("\"","\\\"")
       _id    = hit['_id'].replace("\"","\\\"")
-      self.put_line("{\"index\":{\"_index\":\"" + _index + "\",\"_type\":\"" + _type + "\",\"_id\":\"" + _id + "\"}}\n")
-      self.put_line(json.dumps(hit['_source'], sort_keys=True, separators=(',', ':')) + "\n")
+      self.put_line(0, "{\"index\":{\"_index\":\"" + _index + "\",\"_type\":\"" + _type + "\",\"_id\":\"" + _id + "\"}}\n")
+      self.put_line(0, json.dumps(hit['_source'], sort_keys=True, separators=(',', ':')) + "\n")
       itemsread += 1
     if self.outurl != -1: self.tmpfile.close()
     return itemsread
@@ -56,15 +62,16 @@ class ElasticCurl:
     return itemsread # the items have already been written through put_line()
 
   def put_items_to_es(self, itemsread):
-    cmd = "curl -s -XPOST " + self.args.output + "/_bulk --data-binary @" + self.args.tmp
-    try:
-      result = json.loads(subprocess.check_output(cmd, shell=True))
-    except subprocess.CalledProcessError as e:
-      self.emit("curl failed, error is " + str(e))
-      sys.exit(1)
     itemswrote = 0
-    for line in result['items']:
-      itemswrote += 1 # should probably check if result was 'ok'
+    for f in range(0, len(self.args.output)):
+      cmd = "curl -s -XPOST " + self.args.output[f] + "/_bulk --data-binary @" + self.args.tmp + "." + str(f)
+      try:
+        result = json.loads(subprocess.check_output(cmd, shell=True))
+      except subprocess.CalledProcessError as e:
+        self.emit("curl failed, error is " + str(e))
+        sys.exit(1)
+      for line in result['items']:
+        if line.get('index') and line['index'].get('ok'): itemswrote += 1
     return itemswrote
 
   def get_items(self, limit, offset):
@@ -97,7 +104,7 @@ class ElasticCurl:
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--input',  required=True)
-parser.add_argument('--output', required=True)
+parser.add_argument('--output', required=True, nargs='+')
 parser.add_argument('--limit',  type=int,  default=5000)
 parser.add_argument('--tmp',    default="/tmp/elasticcurl.json")
 args = parser.parse_args()
