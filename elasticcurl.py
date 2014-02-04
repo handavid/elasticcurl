@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 
 class ElasticCurl:
@@ -61,18 +62,30 @@ class ElasticCurl:
   def put_items_to_file(self, itemsread):
     return itemsread # the items have already been written through put_line()
 
-  def put_items_to_es(self, itemsread):
+  def put_chunk_to_es(self, results, f):
     itemswrote = 0
+    cmd = "curl -s -XPOST " + self.args.output[f] + "/_bulk --data-binary @" + self.args.tmp + "." + str(f)
+    try:
+      result = json.loads(subprocess.check_output(cmd, shell=True))
+    except subprocess.CalledProcessError as e:
+      self.emit("curl failed, error is " + str(e))
+      sys.exit(1)
+    for line in result['items']:
+      if line.get('index'):
+        if line['index'].get('ok'): itemswrote += 1
+        else: print line
+    results[f] = itemswrote
+
+  def put_items_to_es(self, itemsread):
+    threads = []
+    results = [None] * len(self.args.output)
     for f in range(0, len(self.args.output)):
-      cmd = "curl -s -XPOST " + self.args.output[f] + "/_bulk --data-binary @" + self.args.tmp + "." + str(f)
-      try:
-        result = json.loads(subprocess.check_output(cmd, shell=True))
-      except subprocess.CalledProcessError as e:
-        self.emit("curl failed, error is " + str(e))
-        sys.exit(1)
-      for line in result['items']:
-        if line.get('index') and line['index'].get('ok'): itemswrote += 1
-    return itemswrote
+      thread = threading.Thread(target=self.put_chunk_to_es, args=(results,f,))
+      thread.start()
+      threads.append(thread)
+    for thread in threads:
+      thread.join()
+    return sum(results)
 
   def get_items(self, limit, offset):
     return self.get_items_from_file(limit, offset) if self.inurl == -1 else self.get_items_from_es(limit, offset)
