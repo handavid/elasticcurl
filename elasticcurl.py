@@ -16,6 +16,7 @@ class ElasticCurl:
     self.inurl   = args.input.find(":")   # if this is -1, it's not a URL (and therefore a file)
     self.outurl  = "".join(args.output).find(":")  # if this is -1, it's not a URL (and therefore a file)
     self.tmpfile = []
+    self.scroll_id = ""
 
   def emit(self, line):
     print time.asctime(time.localtime(time.time())) + " | " + line
@@ -45,7 +46,10 @@ class ElasticCurl:
     return itemsread
 
   def get_items_from_es(self, limit, offset):
-    cmd = "curl -s \"" + args.input + "/_search?size=" + str(limit) + "&from=" + str(offset) + "\""
+    if self.args.scan:
+      cmd = "curl -s -XGET '" + self.args.input + "/_search/scroll?scroll=10m' -d '" + self.scroll_id + "'"
+    else:
+      cmd = "curl -s \"" + self.args.input + "/_search?size=" + str(limit) + "&from=" + str(offset) + "\""
     result = json.loads(subprocess.check_output(cmd, shell=True))
     itemsread = 0
     if self.outurl != -1: self.tmpfile = open(self.args.tmp,'w')
@@ -99,6 +103,11 @@ class ElasticCurl:
     self.infile  = None if  self.inurl != -1 else open(self.args.input)
     self.outfile = None if self.outurl != -1 else open(self.args.output[0],'w')
 
+    if self.inurl != -1 and self.args.scan: # if we're reading from elasticsearch, initiate scan mode
+      cmd = "curl -s -XGET '" + self.args.input + "/_search?search_type=scan&scroll=10m&size=" + str(self.args.limit) + "' -d '{ \"query\" : { \"match_all\" : {} } } '";
+      result = json.loads(subprocess.check_output(cmd, shell=True))
+      self.scroll_id = result['_scroll_id']
+
     itemsin  = 0
     itemsout = 0
     while True:
@@ -119,6 +128,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--input',  required=True)
 parser.add_argument('--output', required=True, nargs='+')
 parser.add_argument('--limit',  type=int,  default=5000)
+parser.add_argument('--scan',   type=bool, default=True)
 parser.add_argument('--tmp',    default="/tmp/elasticcurl.json")
 args = parser.parse_args()
 
