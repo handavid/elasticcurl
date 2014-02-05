@@ -97,7 +97,7 @@ class ElasticCurl:
     self.emit("elasticcurl begin")
 
     self.infile  = None if  self.inurl != -1 else open(self.args.input)
-    self.outfile = None if self.outurl != -1 else open(self.args.output,'w')
+    self.outfile = None if self.outurl != -1 else open(self.args.output[0],'w')
 
     itemsin  = 0
     itemsout = 0
