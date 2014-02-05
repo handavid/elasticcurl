@@ -128,7 +128,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--input',  required=True)
 parser.add_argument('--output', required=True, nargs='+')
 parser.add_argument('--limit',  type=int,  default=5000)
-parser.add_argument('--scan',   type=bool, default=True)
+parser.add_argument('--scan',   type=bool, default=False)
 parser.add_argument('--tmp',    default="/tmp/elasticcurl.json")
 args = parser.parse_args()
 
