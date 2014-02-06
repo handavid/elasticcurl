@@ -13,7 +13,7 @@ class ElasticCurl:
 
   def __init__(self, args):
     self.args    = args
-    self.inurl   = args.input.find(":")   # if this is -1, it's not a URL (and therefore a file)
+    self.inurl   = "".join(args.input).find(":")   # if this is -1, it's not a URL (and therefore a file)
     self.outurl  = "".join(args.output).find(":")  # if this is -1, it's not a URL (and therefore a file)
     self.tmpfile = []
     self.scroll_id = ""
@@ -23,15 +23,13 @@ class ElasticCurl:
     sys.stdout.flush()
 
   def put_line(self, f, line):
-    if self.outurl == -1: self.outfile.write(line)
-    else:                 self.tmpfile[f].write(line)
+    self.tmpfile[f].write(line)
 
   def get_items_from_file(self, limit, offset):
     itemsread = 0
-    if self.outurl != -1:
-      self.tmpfile = []
-      for f in range(0, len(self.args.output)):
-        self.tmpfile.append(open(self.args.tmp + "." + str(f),'w'))
+    self.tmpfile = []
+    for f in range(0, len(self.args.output)):
+      self.tmpfile.append(open(self.args.tmp + "." + str(f),'w'))
     for num in range(0, limit * len(self.args.output)):
       f = num % len(self.args.output)
       coord = self.infile.readline()
@@ -40,31 +38,62 @@ class ElasticCurl:
       self.put_line(f, coord)
       self.put_line(f, item)
       itemsread += 1
-    if self.outurl != -1:
-      for f in range(0, len(self.args.output)):
-        self.tmpfile[f].close()
+    for f in range(0, len(self.args.output)):
+      self.tmpfile[f].close()
     return itemsread
 
-  def get_items_from_es(self, limit, offset):
+  def get_chunk_from_es(self, results, limit, offset, f):
     if self.args.scan:
-      cmd = "curl -s -XGET '" + self.args.input + "/_search/scroll?scroll=10m' -d '" + self.scroll_id + "'"
+      cmd = "curl -s -XGET '" + self.args.input[f] + "/_search/scroll?scroll=10m' -d '" + self.scroll_id + "'"
     else:
-      cmd = "curl -s \"" + self.args.input + "/_search?size=" + str(limit) + "&from=" + str(offset) + "\""
+      cmd = "curl -s \"" + self.args.input[f] + "/_search?size=" + str(limit) + "&from=" + str(offset) + "\""
     result = json.loads(subprocess.check_output(cmd, shell=True))
     itemsread = 0
-    if self.outurl != -1: self.tmpfile = open(self.args.tmp,'w')
     for hit in result['hits']['hits']:
       _index = hit['_index'].replace("\"","\\\"")
       _type  = hit['_type' ].replace("\"","\\\"")
       _id    = hit['_id'   ].replace("\"","\\\"")
-      self.put_line(0, "{\"index\":{\"_index\":\"" + _index + "\",\"_type\":\"" + _type + "\",\"_id\":\"" + _id + "\"}}\n")
-      self.put_line(0, json.dumps(hit['_source'], sort_keys=True, separators=(',', ':')) + "\n")
+      self.put_line(f, "{\"index\":{\"_index\":\"" + _index + "\",\"_type\":\"" + _type + "\",\"_id\":\"" + _id + "\"}}\n")
+      self.put_line(f, json.dumps(hit['_source'], sort_keys=True, separators=(',', ':')) + "\n")
       itemsread += 1
-    if self.outurl != -1: self.tmpfile.close()
-    return itemsread
+    results[f] = itemsread
 
-  def put_items_to_file(self, itemsread):
-    return itemsread # the items have already been written through put_line()
+  def get_items_from_es(self, limit, offset):
+    self.tmpfile = []
+    for f in range(0, len(self.args.input)):
+      self.tmpfile.append(open(self.args.tmp + "." + str(f),'w'))
+
+    threads = []
+    results = [None] * len(self.args.input)
+    for f in range(0, len(self.args.input)):
+      thread = threading.Thread(target=self.get_chunk_from_es, args=(results,limit,offset+limit*f,f,))
+      thread.start()
+      threads.append(thread)
+    for thread in threads:
+      thread.join()
+
+    for f in range(0, len(self.args.input)):
+      self.tmpfile[f].close()
+    cmd = "cat ";
+    for f in range(0, len(self.args.input)):
+      cmd += self.args.tmp + "." + str(f) + " "
+    cmd += "> " + self.args.tmp
+    subprocess.check_output(cmd, shell=True)
+
+    return sum(results)
+
+  def put_items_to_file(self):
+    itemswrote = 0
+    thefile = open(self.args.tmp)
+    while True:
+      coord = thefile.readline()
+      item  = thefile.readline()
+      if item == "": break
+      self.outfile.write(coord)
+      self.outfile.write(item)
+      itemswrote += 1
+    thefile.close()
+    return itemswrote
 
   def put_chunk_to_es(self, results, f):
     itemswrote = 0
@@ -80,7 +109,7 @@ class ElasticCurl:
         else: print line
     results[f] = itemswrote
 
-  def put_items_to_es(self, itemsread):
+  def put_items_to_es(self):
     threads = []
     results = [None] * len(self.args.output)
     for f in range(0, len(self.args.output)):
@@ -94,17 +123,17 @@ class ElasticCurl:
   def get_items(self, limit, offset):
     return self.get_items_from_file(limit, offset) if self.inurl == -1 else self.get_items_from_es(limit, offset)
 
-  def put_items(self, itemsread):
-    return self.put_items_to_file(itemsread) if self.outurl == -1 else self.put_items_to_es(itemsread)
+  def put_items(self):
+    return self.put_items_to_file() if self.outurl == -1 else self.put_items_to_es()
 
   def run(self):
     self.emit("elasticcurl begin")
 
-    self.infile  = None if  self.inurl != -1 else open(self.args.input)
+    self.infile  = None if  self.inurl != -1 else open(self.args.input[0])
     self.outfile = None if self.outurl != -1 else open(self.args.output[0],'w')
 
     if self.inurl != -1 and self.args.scan: # if we're reading from elasticsearch, initiate scan mode
-      cmd = "curl -s -XGET '" + self.args.input + "/_search?search_type=scan&scroll=10m&size=" + str(self.args.limit) + "' -d '{ \"query\" : { \"match_all\" : {} } } '";
+      cmd = "curl -s -XGET '" + self.args.input[0] + "/_search?search_type=scan&scroll=10m&size=" + str(self.args.limit) + "' -d '{ \"query\" : { \"match_all\" : {} } } '";
       result = json.loads(subprocess.check_output(cmd, shell=True))
       self.scroll_id = result['_scroll_id']
 
@@ -115,7 +144,7 @@ class ElasticCurl:
       if itemsread == 0: break
       itemsin += itemsread
       self.emit("Read " + str(itemsin) + " items total")
-      itemswrote = self.put_items(itemsread)
+      itemswrote = self.put_items()
       itemsout += itemswrote
       self.emit("Wrote " + str(itemsout) + " items total")
 
@@ -125,7 +154,7 @@ class ElasticCurl:
     self.emit("elasticcurl end")
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--input',  required=True)
+parser.add_argument('--input',  required=True, nargs='+')
 parser.add_argument('--output', required=True, nargs='+')
 parser.add_argument('--limit',  type=int,  default=5000)
 parser.add_argument('--scan',   type=bool, default=False)
