@@ -55,8 +55,8 @@ class ElasticCurl:
     if self.outurl != -1: self.tmpfile = open(self.args.tmp,'w')
     for hit in result['hits']['hits']:
       _index = hit['_index'].replace("\"","\\\"")
-      _type  = hit['_type'].replace("\"","\\\"")
-      _id    = hit['_id'].replace("\"","\\\"")
+      _type  = hit['_type' ].replace("\"","\\\"")
+      _id    = hit['_id'   ].replace("\"","\\\"")
       self.put_line(0, "{\"index\":{\"_index\":\"" + _index + "\",\"_type\":\"" + _type + "\",\"_id\":\"" + _id + "\"}}\n")
       self.put_line(0, json.dumps(hit['_source'], sort_keys=True, separators=(',', ':')) + "\n")
       itemsread += 1
