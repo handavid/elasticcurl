@@ -130,8 +130,8 @@ class ElasticCurl:
   def run(self):
     self.emit("elasticcurl begin")
 
-    self.infile  = None if self.inurl  != -1 else (gzip.open( self.args.input[0]) if  self.args.input[0].endswith("gz") else open( self.args.input[0]))
-    self.outfile = None if self.outurl != -1 else (gzip.open(self.args.output[0]) if self.args.output[0].endswith("gz") else open(self.args.output[0]))
+    self.infile  = None if self.inurl  != -1 else (gzip.open( self.args.input[0]     ) if  self.args.input[0].endswith("gz") else open( self.args.input[0]     ))
+    self.outfile = None if self.outurl != -1 else (gzip.open(self.args.output[0], 'w') if self.args.output[0].endswith("gz") else open(self.args.output[0], 'w'))
 
     if self.inurl != -1 and self.args.scan: # if we're reading from elasticsearch, initiate scan mode
       cmd = "curl -s -XGET '" + self.args.input[0] + "/_search?search_type=scan&scroll=10m&size=" + str(self.args.limit) + "' -d '{ \"query\" : { \"match_all\" : {} } } '";
