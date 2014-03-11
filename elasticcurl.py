@@ -112,7 +112,8 @@ class ElasticCurl:
     itemsin  = 0
     itemsout = 0
     while True:
-      itemsread = self.get_items(self.args.limit, itemsin)
+      offset = itemsin * self.args.jobs + self.args.limit * self.args.id
+      itemsread = self.get_items(self.args.limit, offset)
       if itemsread == 0: break
       itemsin += itemsread
       self.emit("Read " + str(itemsin) + " items total")
@@ -129,6 +130,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--input',  required=True)
 parser.add_argument('--output', required=True)
 parser.add_argument('--limit',  type=int,  default=5000)
+parser.add_argument('--id',     type=int,  default=0)  # which job am I? first is job 0
+parser.add_argument('--jobs',   type=int,  default=1)  # how many are running in parallel (total)
 parser.add_argument('--scan',   type=bool, default=False)
 parser.add_argument('--tmp',    default="/tmp/elasticcurl.json")
 args = parser.parse_args()
