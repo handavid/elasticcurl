@@ -66,7 +66,6 @@ class ElasticCurl:
   def filter(self, string):
     noIndexAt = re.sub(",\"~lastIndexAt\":\"[^\"]*\"", "", string)
     noVersion = re.sub(",\"indexVersion\":\"[^\"]*\"", "", noIndexAt)
-    self.emit("I see that\n" + string + " became\n" + noVersion + "\n")
     return noVersion
 
   def put_items_to_file(self):
