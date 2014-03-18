@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 import gzip
+import hashlib
 
 class ElasticCurl:
 
@@ -62,6 +63,12 @@ class ElasticCurl:
     self.tmpfile.close()
     return itemsread
 
+  def filter(self, string):
+    noIndexAt = re.sub(",\"~lastIndexAt\":\"[^\"]*\"", "", string)
+    noVersion = re.sub(",\"indexVersion\":\"[^\"]*\"", "", noIndexAt)
+    self.emit("I see that\n" + string + " became\n" + noVersion + "\n")
+    return noVersion
+
   def put_items_to_file(self):
     itemswrote = 0
     thefile = open(self.args.tmp)
@@ -69,8 +76,13 @@ class ElasticCurl:
       coord = thefile.readline()
       item  = thefile.readline()
       if item == "": break
-      self.outfile.write(coord)
-      self.outfile.write(item)
+      if self.args.filter:
+        hash_coord = hashlib.sha1(coord).hexdigest()
+        hash_item = hashlib.sha1(self.filter(item)).hexdigest()
+        self.outfile.write(hash_coord + " " + hash_item + "\n")
+      else:
+        self.outfile.write(coord)
+        self.outfile.write(item)
       itemswrote += 1
     thefile.close()
     return itemswrote
@@ -133,6 +145,7 @@ parser.add_argument('--limit',  type=int,  default=5000)
 parser.add_argument('--id',     type=int,  default=0)  # which job am I? first is job 0
 parser.add_argument('--jobs',   type=int,  default=1)  # how many are running in parallel (total)
 parser.add_argument('--scan',   type=bool, default=False)
+parser.add_argument('--filter', type=bool, default=False)
 parser.add_argument('--tmp',    default="/tmp/elasticcurl.json")
 args = parser.parse_args()
 
