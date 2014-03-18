@@ -76,7 +76,7 @@ class ElasticCurl:
       item  = thefile.readline()
       if item == "": break
       if self.args.filter:
-        hash_coord = hashlib.sha1(coord).hexdigest()
+        hash_coord = re.search('"_id":"([^"]*)"', coord).group(1)
         hash_item = hashlib.sha1(self.filter(item)).hexdigest()
         self.outfile.write(hash_coord + " " + hash_item + "\n")
       else:
