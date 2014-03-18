@@ -59,7 +59,7 @@ class ElasticCurl:
       self.put_line(json.dumps(hit['_source'], sort_keys=True, separators=(',', ':')) + "\n")
       itemsread += 1
 
-    self.tmpfile = open(self.args.tmp,'w').close()
+    self.tmpfile.close()
     return itemsread
 
   def put_items_to_file(self):
